@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>Photo → Semi-Abstract (Keep Shape Strong)</title>
+  <title>Photo → Hasui Structure Mode</title>
   <style>
     body { font-family: sans-serif; padding: 20px; }
     canvas { border: 1px solid #ccc; max-width: 100%; }
@@ -10,7 +10,7 @@
 </head>
 <body>
 
-  <h2>Photo → Semi-Abstract（原形強め）</h2>
+  <h2>Photo → Hasui Structure Mode（巴水構造強調）</h2>
   <input type="file" id="fileInput" accept="image/*">
   <br><br>
   <canvas id="canvas"></canvas>
@@ -42,16 +42,34 @@
       const h = canvas.height;
       const imgData = ctx.getImageData(0, 0, w, h).data;
 
-      // 半抽象：さらに細かく
-      const step = 9;
+      const step = 10;
 
       const points = [];
       for (let y = 0; y <= h; y += step) {
         for (let x = 0; x <= w; x += step) {
 
-          // 揺れをほぼゼロに近づける
-          const jitterX = x + (Math.random() - 0.5) * step * 0.04;
-          const jitterY = y + (Math.random() - 0.5) * step * 0.04;
+          // 基本は揺れを弱く
+          let jitterX = x + (Math.random() - 0.5) * step * 0.03;
+          let jitterY = y + (Math.random() - 0.5) * step * 0.03;
+
+          // --- 巴水構造補正 ---
+
+          // ① 木（左右1/3）は垂直方向を強調 → x の揺れをほぼゼロに
+          if (x < w * 0.33 || x > w * 0.66) {
+            jitterX = x; // 垂直方向を強調
+          }
+
+          // ② 階段（中央下1/3）は台形補正 → 上辺を狭く
+          if (y > h * 0.55) {
+            const ratio = (y - h * 0.55) / (h * 0.45);
+            jitterX = x + (x - w / 2) * ratio * 0.15;
+          }
+
+          // ③ 建物（中央）は揺れゼロ → 完全な四角形
+          if (x > w * 0.33 && x < w * 0.66 && y > h * 0.3 && y < h * 0.55) {
+            jitterX = x;
+            jitterY = y;
+          }
 
           points.push({
             x: Math.max(0, Math.min(w, jitterX)),
@@ -78,7 +96,6 @@
       }
     }
 
-    // 平均色（サンプル数増やして安定化）
     function getAvgColor(cx, cy, w, imgData) {
       let r = 0, g = 0, b = 0;
       let count = 0;
