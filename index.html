@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>Photo → Hasui Structure Mode</title>
+  <title>Photo → Hasui Structure Mode (Triangles & Trapezoids)</title>
   <style>
     body { font-family: sans-serif; padding: 20px; }
     canvas { border: 1px solid #ccc; max-width: 100%; }
@@ -10,7 +10,7 @@
 </head>
 <body>
 
-  <h2>Photo → Hasui Structure Mode（巴水構造強調）</h2>
+  <h2>Photo → Hasui Structure Mode（部分的幾何学化）</h2>
   <input type="file" id="fileInput" accept="image/*">
   <br><br>
   <canvas id="canvas"></canvas>
@@ -42,34 +42,15 @@
       const h = canvas.height;
       const imgData = ctx.getImageData(0, 0, w, h).data;
 
-      const step = 10;
+      const step = 12;
 
       const points = [];
       for (let y = 0; y <= h; y += step) {
         for (let x = 0; x <= w; x += step) {
 
           // 基本は揺れを弱く
-          let jitterX = x + (Math.random() - 0.5) * step * 0.03;
-          let jitterY = y + (Math.random() - 0.5) * step * 0.03;
-
-          // --- 巴水構造補正 ---
-
-          // ① 木（左右1/3）は垂直方向を強調 → x の揺れをほぼゼロに
-          if (x < w * 0.33 || x > w * 0.66) {
-            jitterX = x; // 垂直方向を強調
-          }
-
-          // ② 階段（中央下1/3）は台形補正 → 上辺を狭く
-          if (y > h * 0.55) {
-            const ratio = (y - h * 0.55) / (h * 0.45);
-            jitterX = x + (x - w / 2) * ratio * 0.15;
-          }
-
-          // ③ 建物（中央）は揺れゼロ → 完全な四角形
-          if (x > w * 0.33 && x < w * 0.66 && y > h * 0.3 && y < h * 0.55) {
-            jitterX = x;
-            jitterY = y;
-          }
+          let jitterX = x + (Math.random() - 0.5) * step * 0.04;
+          let jitterY = y + (Math.random() - 0.5) * step * 0.04;
 
           points.push({
             x: Math.max(0, Math.min(w, jitterX)),
@@ -91,19 +72,44 @@
           const p2 = points[(j + 1) * cols + i];
           const p3 = points[(j + 1) * cols + i + 1];
 
-          drawQuad(p0, p1, p3, p2, imgData, w);
+          const cx = (p0.x + p1.x + p2.x + p3.x) / 4;
+          const cy = (p0.y + p1.y + p2.y + p3.y) / 4;
+
+          // --- 巴水構造の領域判定 ---
+
+          // ① 木（左右1/3）→ 上に尖る三角形（▲）
+          if (cx < w * 0.33 || cx > w * 0.66) {
+            drawTriangleUp(p0, p1, p2, p3, imgData, w);
+            continue;
+          }
+
+          // ② 階段（中央下）→ 台形
+          if (cy > h * 0.55) {
+            drawTrapezoid(p0, p1, p2, p3, imgData, w);
+            continue;
+          }
+
+          // ③ 建物（中央）→ 揺れゼロの四角形
+          if (cx > w * 0.33 && cx < w * 0.66 && cy > h * 0.3 && cy < h * 0.55) {
+            drawStableQuad(p0, p1, p2, p3, imgData, w);
+            continue;
+          }
+
+          // ④ その他 → 半抽象の四角形
+          drawQuad(p0, p1, p2, p3, imgData, w);
         }
       }
     }
 
+    // 平均色
     function getAvgColor(cx, cy, w, imgData) {
       let r = 0, g = 0, b = 0;
       let count = 0;
-      const sample = 14;
+      const sample = 12;
 
       for (let i = 0; i < sample; i++) {
-        const sx = Math.floor(cx + (Math.random() - 0.5) * 14);
-        const sy = Math.floor(cy + (Math.random() - 0.5) * 14);
+        const sx = Math.floor(cx + (Math.random() - 0.5) * 12);
+        const sy = Math.floor(cy + (Math.random() - 0.5) * 12);
 
         if (sx < 0 || sy < 0 || sx >= w) continue;
 
@@ -117,18 +123,76 @@
       return `rgb(${(r / count) | 0}, ${(g / count) | 0}, ${(b / count) | 0})`;
     }
 
-    function drawQuad(p0, p1, p2, p3, imgData, w) {
-      const cx = Math.floor((p0.x + p1.x + p2.x + p3.x) / 4);
-      const cy = Math.floor((p0.y + p1.y + p2.y + p3.y) / 4);
+    // --- 幾何学形の描画 ---
 
+    // ▲ 上に尖る三角形（木）
+    function drawTriangleUp(p0, p1, p2, p3, imgData, w) {
+      const cx = (p0.x + p1.x + p2.x + p3.x) / 4;
+      const cy = (p0.y + p1.y + p2.y + p3.y) / 4;
+      const color = getAvgColor(cx, cy, w, imgData);
+
+      const top = { x: cx, y: Math.min(p0.y, p1.y, p2.y, p3.y) };
+      const left = { x: p0.x, y: Math.max(p0.y, p2.y) };
+      const right = { x: p1.x, y: Math.max(p1.y, p3.y) };
+
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(top.x, top.y);
+      ctx.lineTo(left.x, left.y);
+      ctx.lineTo(right.x, right.y);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // 台形（階段）
+    function drawTrapezoid(p0, p1, p2, p3, imgData, w) {
+      const cx = (p0.x + p1.x + p2.x + p3.x) / 4;
+      const cy = (p0.y + p1.y + p2.y + p3.y) / 4;
+      const color = getAvgColor(cx, cy, w, imgData);
+
+      const topLeft = { x: p0.x + (p1.x - p0.x) * 0.2, y: p0.y };
+      const topRight = { x: p1.x - (p1.x - p0.x) * 0.2, y: p1.y };
+      const bottomLeft = p2;
+      const bottomRight = p3;
+
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(topLeft.x, topLeft.y);
+      ctx.lineTo(topRight.x, topRight.y);
+      ctx.lineTo(bottomRight.x, bottomRight.y);
+      ctx.lineTo(bottomLeft.x, bottomLeft.y);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // 建物（揺れゼロの四角形）
+    function drawStableQuad(p0, p1, p2, p3, imgData, w) {
+      const cx = (p0.x + p1.x + p2.x + p3.x) / 4;
+      const cy = (p0.y + p1.y + p2.y + p3.y) / 4;
       const color = getAvgColor(cx, cy, w, imgData);
 
       ctx.fillStyle = color;
       ctx.beginPath();
       ctx.moveTo(p0.x, p0.y);
       ctx.lineTo(p1.x, p1.y);
-      ctx.lineTo(p2.x, p2.y);
       ctx.lineTo(p3.x, p3.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // 半抽象の四角形
+    function drawQuad(p0, p1, p2, p3, imgData, w) {
+      const cx = (p0.x + p1.x + p2.x + p3.x) / 4;
+      const cy = (p0.y + p1.y + p2.y + p3.y) / 4;
+      const color = getAvgColor(cx, cy, w, imgData);
+
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(p0.x, p0.y);
+      ctx.lineTo(p1.x, p1.y);
+      ctx.lineTo(p3.x, p3.y);
+      ctx.lineTo(p2.x, p2.y);
       ctx.closePath();
       ctx.fill();
     }
