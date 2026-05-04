@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>Photo → Abstract</title>
+  <style>
+    body { font-family: sans-serif; }
+    canvas { border: 1px solid #ccc; max-width: 100%; }
+  </style>
+</head>
+<body>
+  <input type="file" id="fileInput" accept="image/*">
+  <br><br>
+  <canvas id="canvas"></canvas>
+
+  <script>
+    const fileInput = document.getElementById('fileInput');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const img = new Image();
+      img.onload = () => {
+        const maxW = 600;
+        const scale = Math.min(maxW / img.width, 1);
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        makeAbstract();
+      };
+      img.src = URL.createObjectURL(file);
+    });
+
+    function makeAbstract() {
+      const w = canvas.width;
+      const h = canvas.height;
+      const imgData = ctx.getImageData(0, 0, w, h).data;
+
+      // グリッドの粗さ（値を大きくするとより抽象的）
+      const step = 40;
+
+      // グリッド点を作る
+      const points = [];
+      for (let y = 0; y <= h; y += step) {
+        for (let x = 0; x <= w; x += step) {
+          // 少しランダムにずらして“揺れ”を入れる
+          const jitterX = x + (Math.random() - 0.5) * step * 0.4;
+          const jitterY = y + (Math.random() - 0.5) * step * 0.4;
+          points.push({
+            x: Math.max(0, Math.min(w, jitterX)),
+            y: Math.max(0, Math.min(h, jitterY))
+          });
+        }
+      }
+
+      // 背景を白でクリア
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, w, h);
+
+      // 簡易的に「右下の点」と三角形を作る（本格 Delaunay でなく簡易版）
+      const cols = Math.floor(w / step) + 1;
+      const rows = Math.floor(h / step) + 1;
+
+      for (let j = 0; j < rows - 1; j++) {
+        for (let i = 0; i < cols - 1; i++) {
+          const p0 = points[j * cols + i];
+          const p1 = points[j * cols + i + 1];
+          const p2 = points[(j + 1) * cols + i];
+          const p3 = points[(j + 1) * cols + i + 1];
+
+          // 三角形1: p0, p1, p2
+          drawTriangleWithAvgColor(p0, p1, p2, imgData, w, h);
+
+          // 三角形2: p2, p1, p3
+          drawTriangleWithAvgColor(p2, p1, p3, imgData, w, h);
+        }
+      }
+    }
+
+    function drawTriangleWithAvgColor(p0, p1, p2, imgData, w, h) {
+      // 三角形の中心をサンプルして色を取る（簡易版）
+      const cx = Math.floor((p0.x + p1.x + p2.x) / 3);
+      const cy = Math.floor((p0.y + p1.y + p2.y) / 3);
+      const idx = (cy * w + cx) * 4;
+      const r = imgData[idx];
+      const g = imgData[idx + 1];
+      const b = imgData[idx + 2];
+
+      ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+      ctx.beginPath();
+      ctx.moveTo(p0.x, p0.y);
+      ctx.lineTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.closePath();
+      ctx.fill();
+    }
+  </script>
+</body>
+</html>
